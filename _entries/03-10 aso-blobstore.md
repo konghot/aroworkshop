@@ -7,23 +7,21 @@ parent-id: lab-clusterapp
 
 ## Azure Service Operator (ASO)
 
-The [Azure Service Operator](https://azure.github.io/azure-service-operator/) (ASO) allows you to create and use Azure services directly from
-Kubernetes. You can deploy your applications, including any required Azure services directly within the Kubernetes framework using a familiar structure to declaratively define and create Azure services like Storage Blob or CosmosDB databases.
+The [Azure Service Operator](https://azure.github.io/azure-service-operator/) (ASO) allows you to use Azure services directly from Kubernetes. You can deploy your applications, including any required Azure service resources directly within the Kubernetes framework using a familiar structure to declaratively define and create Azure service resources like Storage Blob or CosmosDB databases.
 
-In order to illustrate the use of the ASO on ARO, we will walk through a simple example of creating an Azure Blob Storage container, connecting to it with OSToy, upload a file to it, and view the file in our application. Interestingly, this part of the workshop will also use Azure Key Vault to store secrets that the application can use to access Azure services.  We will store the secret needed to access the Blob Storage in Azure Key Vault and then mount the secret from there into our cluster for the OSToy application to use.  
+In order to illustrate the use of the ASO on ARO, we will create an Azure Blob Storage container, connect to it with OSToy, upload a file to it, and view the file in our application. Interestingly, this part of the workshop will also use Azure Key Vault to store secrets that the application can use to access Azure services.  We will store the secret needed to access the Blob Storage in Azure Key Vault and then mount the secret from there into our cluster for the OSToy application to use.  
 
 
 ### Why should you use Key Vault to store secrets?
-Using a secret store like Azure Key Vault allows you to take advantage of a number of benefits.
+Using a secret store like Azure Key Vault provides a number of benefits.
 1. Scalability - Using a secret store service is already designed to scale to handle a large number of secrets over placing them directly in the cluster.
-1. Centralization - You are able to keep all your organizations secrets in one location.
-1. Security - Features like access control, monitoring, encryption and audit are already baked in.
-1. Rotation - Decoupling the secret from your cluster makes it much easier to rotate secrets since you only have to update it in Key Vault and the Kubernetes secret in the cluster
-    will reference that external secret store.
+2. Centralization - You are able to keep all your organizations secrets in one location.
+3. Security - Features like access control, monitoring, encryption and audit are already baked in.
+4. Rotation - Decoupling the secret from your cluster makes it much easier to rotate secrets since you only have to update it in Key Vault and the Kubernetes secret in the cluster will reference that external secret store.
 
 ### Section overview
 
-To make the process clearer, here is an overview of the procedure we are going to follow. There are three main "parts".
+This section has three main "parts":
 
 1. **Install the Azure Service Operator** - This allows you to create/delete blob storage through the use of a Kubernetes Custom Resource.  Install the controller which will also create the required namespace and the service account and then create the required resources.
 1. **Setup Key Vault** - Perform required prerequisites (ex: install CSI drivers), create a Key Vault instance, add the connection string.
@@ -55,8 +53,7 @@ Below is an updated application diagram of what this will look like after comple
 
 ### Create a service principal
 
-If you don't already have a Service Principal to use then we need to create one.  It is recommended to create one with `Contributor` level permissions for this workshop so that the Azure Service
-Operator can create resources and that access can be granted to Key Vault.
+If you don't already have a Service Principal to use then we need to create one.  It is recommended to create one with `Contributor` level permissions for this workshop so that the Azure Service Operator can both create resources and access Key Vault.
 
 1. Create a service principal for use in the lab and store the client secret in an environment variable.
 
@@ -142,8 +139,7 @@ Operator can create resources and that access can be granted to Key Vault.
 
 ## Create Storage Accounts and containers using the ASO
 
-Now we need to create a Storage Account and for our blob storage to use with OSToy.  We could create this using the CLI or the Azure Portal, but wouldn't it be nice if we could
-do so using standard Kubernetes objects. We could define the all the resources our application needs in once place.  We will create each resource separately below.
+Now we need to create a Storage Account for blob storage resources that we can use with OSToy.  We could create it using the CLI or the Azure Portal, but wouldn't it be nice if we could do so using standard Kubernetes objects. We could define all the resources our application needs in once place.  We will create each resource separately below.
 
 1.  Create a new OpenShift project for our OSToy app (even if you already have one from earlier).
 
@@ -197,7 +193,7 @@ do so using standard Kubernetes objects. We could define the all the resources o
     az storage account list --query '[].name' --output tsv | grep ${MY_UUID}
     ```
 
-1. Create a Blob service.
+1. Create a Blob service resource.
 
     ```
     cat << EOF | oc apply -f -
@@ -212,7 +208,7 @@ do so using standard Kubernetes objects. We could define the all the resources o
     EOF
     ```
 
-1. Create a container.
+1. Create a Blob service container.
 
     ```
     cat << EOF | oc apply -f -
@@ -254,7 +250,7 @@ In this part we will create a Key Vault location to store the connection string 
 
     Or, if you'd rather not live on the edge, feel free to download it first.
 
-1. Create an Azure Key Vault in the resource group we created using the ASO above.
+1. Create an Azure Key Vault instance in the resource group we created using the ASO above.
 
     ```
     az keyvault create -n $KEYVAULT_NAME --resource-group ${PROJECT_NAME}-rg --location $REGION
