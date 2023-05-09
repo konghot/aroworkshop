@@ -68,4 +68,21 @@ Azure Red Hat OpenShift is the greatest thing since sliced bread!
 
 Then exit the SSH session by typing `exit`. You will then be in your CLI.
 
+You can verify the Azure Disk at the backend of the PVC/PV attached to the pod.
+
+```
+$ oc describe pods ostoy-frontend-64f769bd89-jkls9 | grep ClaimName
+    ClaimName  ostoy-pvc
+$ oc get pvc
+NAME        STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS      AGE
+ostoy-pvc   Bound    pvc-cd569d98-324e-404c-af8c-aff60dce0620   1Gi        RWO            managed-premium   10h
+$ oc get pv
+NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM             STORAGECLASS      REASON   AGE
+pvc-cd569d98-324e-404c-af8c-aff60dce0620   1Gi        RWO            Delete           Bound    ostoy/ostoy-pvc   managed-premium            10h
+$ az disk list | grep pvc-cd569d98-324e-404c-af8c-aff60dce0620
+pvc-cd569d98-324e-404c-af8c-aff60dce0620                        ARO-INFRA-LHFF47HL-AROUSE2  eastus2     3        Premium_LRS                1         Succeeded
+$
+$ az disk show -g ARO-INFRA-LHFF47HL-AROUSE2 -n pvc-cd569d98-324e-404c-af8c-aff60dce0620 -o yamlc
+```
+
 {% endcollapsible %}
