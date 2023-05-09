@@ -26,6 +26,28 @@ data:
   config.json:  '{ "default": "123" }'
 ```
 
+You can also view it through oc CLI:
+
+'''
+$ oc describe configmaps ostoy-configmap-files
+Name:         ostoy-configmap-files
+Namespace:    ostoy
+Labels:       <none>
+Annotations:  <none>
+
+Data
+====
+config.json:
+----
+{ "default": "123" }
+
+BinaryData
+====
+
+Events:  <none>
+$
+'''
+
 {% endcollapsible %}
 
 ### Configuration using Secrets
