@@ -44,6 +44,234 @@ We will see an IP address returned.  In our example it is `172.30.165.246`.  Thi
 
 ![ostoy DNS](media/managedlab/20-ostoy-dns.png)
 
+
+The ostoy-frontend service is exposed via an Openshift route object that has a DNS name. 
+```
+$ oc describe route ostoy-route
+Name:                   ostoy-route
+Namespace:              ostoy
+Created:                12 hours ago
+Labels:                 <none>
+Annotations:            kubectl.kubernetes.io/last-applied-configuration={"apiVersion":"route.openshift.io/v1","kind":"Route","metadata":{"annotations":{},"name":"ostoy-route","namespace":"ostoy"},"spec":{"to":{"kind":"Service","name":"ostoy-frontend-svc"}}}
+
+                        openshift.io/host.generated=true
+Requested Host:         ostoy-route-ostoy.apps.arouse2.eastus2.aroapp.io
+                           exposed on router default (host router-default.apps.arouse2.eastus2.aroapp.io) 12 hours ago
+Path:                   <none>
+TLS Termination:        <none>
+Insecure Policy:        <none>
+Endpoint Port:          <all endpoint ports>
+
+Service:        ostoy-frontend-svc
+Weight:         100 (100%)
+Endpoints:      <none>
+  
+$ nslookup ostoy-route-ostoy.apps.arouse2.eastus2.aroapp.io
+Server:         172.21.112.1
+Address:        172.21.112.1#53
+
+Non-authoritative answer:
+Name:   ostoy-route-ostoy.apps.arouse2.eastus2.aroapp.io
+Address: 20.7.53.216
+
+```
+
+
+
+The IP address corresponding to that DNS name is configured on the Azure Load Balancer that is automatically created when the ARO cluster is created. 
+```
+$ az network lb list -g  aro-infra-lhff47hl-arouse2
+Location    Name                    ProvisioningState    ResourceGroup               ResourceGuid
+----------  ----------------------  -------------------  --------------------------  ------------------------------------
+eastus2     arouse2-xs5pd           Succeeded            aro-infra-lhff47hl-arouse2  95dc1dda-096e-4018-b48c-d3805df76960
+eastus2     arouse2-xs5pd-internal  Succeeded            aro-infra-lhff47hl-arouse2  653e7daa-4495-4162-8cd0-d696b76807f9
+
+$ az network lb frontend-ip list -g aro-infra-lhff47hl-arouse2 --lb-name arouse2-xs5pd
+Name                              PrivateIPAllocationMethod    ProvisioningState    ResourceGroup
+--------------------------------  ---------------------------  -------------------  --------------------------
+public-lb-ip-v4                   Dynamic                      Succeeded            aro-infra-lhff47hl-arouse2
+a9ed4779105ff463986a597e0836f37d  Dynamic                      Succeeded            aro-infra-lhff47hl-arouse2
+
+$ az network lb frontend-ip show -g aro-infra-lhff47hl-arouse2 --lb-name arouse2-xs5pd -n public-lb-ip-v4 -o yamlc | grep publicIPAddress
+publicIPAddress:
+  id: /subscriptions/sub-id/resourceGroups/aro-infra-lhff47hl-arouse2/providers/Microsoft.Network/publicIPAddresses/arouse2-xs5pd-pip-v4
+
+$ az network lb frontend-ip show -g aro-infra-lhff47hl-arouse2 --lb-name arouse2-xs5pd -n a9ed4779105ff463986a597e0836f37d -o yamlc | grep publicIPAddress
+publicIPAddress:
+  id: /subscriptions/sub-id/resourceGroups/aro-infra-lhff47hl-arouse2/providers/Microsoft.Network/publicIPAddresses/arouse2-xs5pd-default-v4
+
+$ az network public-ip list -g aro-infra-lhff47hl-arouse2
+Name                      ResourceGroup               Location    Zones    Address        IdleTimeoutInMinutes    ProvisioningState
+------------------------  --------------------------  ----------  -------  -------------  ----------------------  -------------------
+arouse2-xs5pd-default-v4  aro-infra-lhff47hl-arouse2  eastus2              20.7.53.216    4                       Succeeded
+arouse2-xs5pd-pip-v4      aro-infra-lhff47hl-arouse2  eastus2              20.230.87.192  4                       Succeeded
+```
+
+
+
+That IP is associated with the router-default kubernetes service that provides the routes functionality (similar to kubernetes ingress, implemented with a pair of HA proxy pods).
+```  
+$ oc get svc -n openshift-ingress
+NAME                      TYPE           CLUSTER-IP       EXTERNAL-IP   PORT(S)                      AGE
+router-default            LoadBalancer   172.30.152.88    20.7.53.216   80:31745/TCP,443:32207/TCP   18h
+router-internal-default   ClusterIP      172.30.117.108   <none>        80/TCP,443/TCP,1936/TCP      18h
+
+$ oc describe svc router-default -n openshift-ingress
+Name:                     router-default
+Namespace:                openshift-ingress
+Labels:                   app=router
+                          ingresscontroller.operator.openshift.io/owning-ingresscontroller=default
+Annotations:              traffic-policy.network.alpha.openshift.io/local-with-fallback:
+Selector:                 ingresscontroller.operator.openshift.io/deployment-ingresscontroller=default
+Type:                     LoadBalancer
+IP Family Policy:         SingleStack
+IP Families:              IPv4
+IP:                       172.30.152.88
+IPs:                      172.30.152.88
+IP:                       20.7.53.216
+LoadBalancer Ingress:     20.7.53.216
+Port:                     http  80/TCP
+TargetPort:               http/TCP
+NodePort:                 http  31745/TCP
+Endpoints:                10.129.2.13:80,10.131.0.15:80
+Port:                     https  443/TCP
+TargetPort:               https/TCP
+NodePort:                 https  32207/TCP
+Endpoints:                10.129.2.13:443,10.131.0.15:443
+Session Affinity:         None
+External Traffic Policy:  Local
+HealthCheck NodePort:     31943
+Events:                   <none>
+
+$ oc get pods -n openshift-ingress
+NAME                              READY   STATUS    RESTARTS   AGE
+router-default-65bddfdd8d-b9q8v   1/1     Running   0          18h
+router-default-65bddfdd8d-mkdnb   1/1     Running   0          17h
+
+$ oc describe pods router-default-65bddfdd8d-b9q8v -n openshift-ingress
+Name:                 router-default-65bddfdd8d-b9q8v
+Namespace:            openshift-ingress
+Priority:             2000000000
+Priority Class Name:  system-cluster-critical
+Node:                 arouse2-xs5pd-worker-eastus21-fjsgd/10.1.2.6
+Start Time:           Mon, 08 May 2023 17:25:36 -0700
+Labels:               ingresscontroller.operator.openshift.io/deployment-ingresscontroller=default
+                      ingresscontroller.operator.openshift.io/hash=6968ddb865
+                      pod-template-hash=65bddfdd8d
+Annotations:          k8s.v1.cni.cncf.io/network-status:
+                        [{
+                            "name": "openshift-sdn",
+                            "interface": "eth0",
+                            "ips": [
+                                "10.131.0.15"
+                            ],
+                            "default": true,
+                            "dns": {}
+                        }]
+                      k8s.v1.cni.cncf.io/networks-status:
+                        [{
+                            "name": "openshift-sdn",
+                            "interface": "eth0",
+                            "ips": [
+                                "10.131.0.15"
+                            ],
+                            "default": true,
+                            "dns": {}
+                        }]
+                      openshift.io/scc: restricted
+                      unsupported.do-not-use.openshift.io/override-liveness-grace-period-seconds: 10
+Status:               Running
+IP:                   10.131.0.15
+IPs:
+  IP:           10.131.0.15
+Controlled By:  ReplicaSet/router-default-65bddfdd8d
+Containers:
+  router:
+    Container ID:   cri-o://8beb16ee1858ea7e101a33fc28c41d05d8eb629aa60772f8724377111299c055
+    Image:          quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:37a08ed049544ebfb0bd282df201edc7bec5250ad3911a02505a97cbece88374
+    Image ID:       quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:37a08ed049544ebfb0bd282df201edc7bec5250ad3911a02505a97cbece88374
+    Ports:          80/TCP, 443/TCP, 1936/TCP
+    Host Ports:     0/TCP, 0/TCP, 0/TCP
+    State:          Running
+      Started:      Mon, 08 May 2023 17:25:38 -0700
+    Ready:          True
+    Restart Count:  0
+    Requests:
+      cpu:      100m
+      memory:   256Mi
+    Liveness:   http-get http://:1936/healthz delay=0s timeout=1s period=10s #success=1 #failure=3
+    Readiness:  http-get http://:1936/healthz/ready delay=0s timeout=1s period=10s #success=1 #failure=3
+    Startup:    http-get http://:1936/healthz/ready delay=0s timeout=1s period=1s #success=1 #failure=120
+    Environment:
+      DEFAULT_CERTIFICATE_DIR:                   /etc/pki/tls/private
+      DEFAULT_DESTINATION_CA_PATH:               /var/run/configmaps/service-ca/service-ca.crt
+      RELOAD_INTERVAL:                           5s
+      ROUTER_ALLOW_WILDCARD_ROUTES:              false
+      ROUTER_CANONICAL_HOSTNAME:                 router-default.apps.arouse2.eastus2.aroapp.io
+      ROUTER_CIPHERS:                            ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384
+      ROUTER_CIPHERSUITES:                       TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256
+      ROUTER_DISABLE_HTTP2:                      true
+      ROUTER_DISABLE_NAMESPACE_OWNERSHIP_CHECK:  false
+      ROUTER_DOMAIN:                             apps.arouse2.eastus2.aroapp.io
+      ROUTER_LOAD_BALANCE_ALGORITHM:             random
+      ROUTER_METRICS_TLS_CERT_FILE:              /etc/pki/tls/metrics-certs/tls.crt
+      ROUTER_METRICS_TLS_KEY_FILE:               /etc/pki/tls/metrics-certs/tls.key
+      ROUTER_METRICS_TYPE:                       haproxy
+      ROUTER_SERVICE_NAME:                       default
+      ROUTER_SERVICE_NAMESPACE:                  openshift-ingress
+      ROUTER_SET_FORWARDED_HEADERS:              append
+      ROUTER_TCP_BALANCE_SCHEME:                 source
+      ROUTER_THREADS:                            4
+      SSL_MIN_VERSION:                           TLSv1.2
+      STATS_PASSWORD_FILE:                       /var/lib/haproxy/conf/metrics-auth/statsPassword
+      STATS_PORT:                                1936
+      STATS_USERNAME_FILE:                       /var/lib/haproxy/conf/metrics-auth/statsUsername
+    Mounts:
+      /etc/pki/tls/metrics-certs from metrics-certs (ro)
+      /etc/pki/tls/private from default-certificate (ro)
+      /var/lib/haproxy/conf/metrics-auth from stats-auth (ro)
+      /var/run/configmaps/service-ca from service-ca-bundle (ro)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-7dnlg (ro)
+Conditions:
+  Type              Status
+  Initialized       True
+  Ready             True
+  ContainersReady   True
+  PodScheduled      True
+Volumes:
+  default-certificate:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  256cfe9b-2faf-4b2f-a1ef-5675d06b46f8-ingress
+    Optional:    false
+  service-ca-bundle:
+    Type:      ConfigMap (a volume populated by a ConfigMap)
+    Name:      service-ca-bundle
+    Optional:  false
+  stats-auth:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  router-stats-default
+    Optional:    false
+  metrics-certs:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  router-metrics-certs-default
+    Optional:    false
+  kube-api-access-7dnlg:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    ConfigMapOptional:       <nil>
+    DownwardAPI:             true
+    ConfigMapName:           openshift-service-ca.crt
+    ConfigMapOptional:       <nil>
+QoS Class:                   Burstable
+Node-Selectors:              kubernetes.io/os=linux
+                             node-role.kubernetes.io/worker=
+Tolerations:                 node.kubernetes.io/memory-pressure:NoSchedule op=Exists
+                             node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:                      <none>
+```
+
 {% endcollapsible %}
 
 ### Scaling
